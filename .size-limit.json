@@ -1,0 +1,8 @@
+[
+  {
+    "name": "script tag (gzipped)",
+    "path": "dist/nsl.min.js",
+    "limit": "10 kB",
+    "gzip": true
+  }
+]

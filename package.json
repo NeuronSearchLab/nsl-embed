@@ -1,0 +1,59 @@
+{
+  "name": "@neuronsearchlab/embed",
+  "version": "0.1.0",
+  "description": "Drop-in browser widget that renders NeuronSearchLab recommendations and captures impressions and clicks.",
+  "type": "module",
+  "main": "dist/nsl.min.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "default": "./dist/nsl.min.js"
+    }
+  },
+  "unpkg": "dist/nsl.min.js",
+  "jsdelivr": "dist/nsl.min.js",
+  "scripts": {
+    "build": "tsup",
+    "test": "node --test test/*.test.js",
+    "size": "size-limit",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "author": "NeuronSearchLab",
+  "license": "MIT",
+  "homepage": "https://docs.neuronsearchlab.com",
+  "bugs": {
+    "url": "https://github.com/NeuronSearchLab/nsl-embed/issues"
+  },
+  "keywords": [
+    "neuronsearchlab",
+    "recommendations",
+    "personalization",
+    "embed",
+    "widget",
+    "browser"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NeuronSearchLab/nsl-embed.git"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.30.0",
+    "@size-limit/preset-small-lib": "^11.1.6",
+    "@types/node": "^24.7.2",
+    "happy-dom": "^15.11.7",
+    "size-limit": "^11.1.6",
+    "tsup": "^8.3.5",
+    "typescript": "^5.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
