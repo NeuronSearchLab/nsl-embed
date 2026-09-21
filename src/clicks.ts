@@ -23,6 +23,7 @@ export function observeClicks(
   host: HTMLElement,
   requestId: string,
   lookup: (element: Element) => ClickTarget | null,
+  placement?: string | null,
 ): () => void {
   const root = host.shadowRoot;
   if (!root) return () => {};
@@ -40,7 +41,7 @@ export function observeClicks(
           item_id: target.itemId,
           request_id: requestId,
           position: target.position,
-        });
+        }, placement);
         return;
       }
     }

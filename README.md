@@ -19,7 +19,7 @@ recommendations rather than as a prerequisite for getting any.
 
 ## Getting a key
 
-Create a publishable key in the console under **Security → Embed key**, listing
+Create a publishable key in the console under **Developers → Website embed**, listing
 the origins it may be used from. A publishable key is designed to be readable by
 anyone who views your page source: it can only read recommendations and report
 impressions, never administer your workspace.
@@ -33,6 +33,7 @@ including staging.
 |---|---|---|
 | `data-nsl-rec` | `related`, `feed` | Required. Anything else is ignored. |
 | `data-nsl-item-url` | `auto`, or a URL | `related` only. `auto` reads the page's `<link rel="canonical">`, falling back to the current URL. |
+| `data-nsl-item-sku` | your own id | `related` only. Overrides the sku the widget reads from the page's JSON-LD. |
 | `data-nsl-limit` | 1-24 | Defaults to 6. |
 
 `auto` is the reason no integration code is needed: the catalogue is keyed on

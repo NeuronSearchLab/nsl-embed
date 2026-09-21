@@ -1,4 +1,4 @@
-import type { RecommendedItem, RenderableItem } from './types';
+import type { RecommendedItem, RenderableItem, StripLayout } from './types';
 
 /**
  * Rendering.
@@ -35,6 +35,15 @@ const STYLES = `
   min-width: 0;
 }
 .nsl-link { color: inherit; text-decoration: none; display: contents; }
+.nsl-strip.nsl-list { display: flex; flex-direction: column; gap: var(--nsl-embed-gap, 12px); }
+.nsl-list .nsl-card { flex-direction: row; align-items: center; gap: 12px; }
+.nsl-list .nsl-media { width: var(--nsl-embed-card-width, 72px); flex: 0 0 auto; }
+.nsl-title {
+  font-size: var(--nsl-embed-title-size, 15px);
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--nsl-embed-fg, #111);
+}
 .nsl-media {
   aspect-ratio: var(--nsl-embed-aspect, 1 / 1);
   background: var(--nsl-embed-media-bg, #f2f2f2);
@@ -75,6 +84,25 @@ function metaString(metadata: Record<string, unknown> | undefined, key: string):
 }
 
 /**
+ * Accept only URLs that are safe to put in an href or src.
+ *
+ * These values arrive from the catalogue, which on the crawl path is built from
+ * whatever a page's JSON-LD claimed. That makes them attacker-influencable at
+ * one remove, and `javascript:` in an href executes on click in the customer's
+ * origin. Anything that is not http(s) is dropped rather than rendered inert,
+ * so a bad value costs a link, never a page.
+ */
+function safeUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value, document.baseURI);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Flatten the several shapes the serving API can return.
  *
  * A recommendation may carry its fields at the top level or nested under `item`,
@@ -94,8 +122,8 @@ export function toRenderable(raw: RecommendedItem): RenderableItem | null {
     id: String(id),
     name: text(item.name) || 'Untitled',
     description: text(item.description),
-    url: metaString(metadata, 'canonical_url') ?? metaString(metadata, 'url'),
-    imageUrl: metaString(metadata, 'image_url') ?? metaString(metadata, 'image'),
+    url: safeUrl(metaString(metadata, 'canonical_url') ?? metaString(metadata, 'url')),
+    imageUrl: safeUrl(metaString(metadata, 'image_url') ?? metaString(metadata, 'image')),
     price: price ? `${currency ? `${currency} ` : ''}${price}` : null,
   };
 }
@@ -110,7 +138,25 @@ export interface RenderResult {
   cards: RenderedCard[];
 }
 
-export function render(host: HTMLElement, items: RenderableItem[]): RenderResult {
+/**
+ * Which card fields to draw.
+ *
+ * A placement's `fields` list is the honest answer to "we want templates":
+ * what merchandisers actually change is whether the price shows and whether
+ * there is a heading, not the markup. Enumerated values only - every branch
+ * here is one the renderer already knows how to draw, so configuring a strip
+ * can never introduce an injection point the way a template language would.
+ */
+function shows(layout: StripLayout | undefined, field: string): boolean {
+  if (!layout?.fields || layout.fields.length === 0) return true;
+  return (layout.fields as string[]).includes(field);
+}
+
+export function render(
+  host: HTMLElement,
+  items: RenderableItem[],
+  layout?: StripLayout,
+): RenderResult {
   // Re-attaching to the same host throws, so reuse an existing root on re-render.
   const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
   root.textContent = '';
@@ -119,9 +165,21 @@ export function render(host: HTMLElement, items: RenderableItem[]): RenderResult
   style.textContent = STYLES;
   root.appendChild(style);
 
+  // 'carousel' deliberately falls back to the grid for now: it is the only
+  // variant that costs real bytes (scroll container, controls, keyboard
+  // handling) and it should be built properly rather than approximated.
   const list = document.createElement('ul');
-  list.className = 'nsl-strip';
+  list.className = layout?.variant === 'list' ? 'nsl-strip nsl-list' : 'nsl-strip';
   list.setAttribute('role', 'list');
+
+  if (layout?.title) {
+    const heading = document.createElement('p');
+    heading.className = 'nsl-title';
+    // textContent, as everywhere: this string comes from the console and is
+    // rendered on a customer's production page.
+    heading.textContent = layout.title;
+    root.appendChild(heading);
+  }
 
   const cards: RenderedCard[] = [];
 
@@ -144,7 +202,7 @@ export function render(host: HTMLElement, items: RenderableItem[]): RenderResult
       container.className = 'nsl-link';
     }
 
-    if (item.imageUrl) {
+    if (item.imageUrl && shows(layout, 'image')) {
       const media = document.createElement('div');
       media.className = 'nsl-media';
       const img = document.createElement('img');
@@ -163,7 +221,7 @@ export function render(host: HTMLElement, items: RenderableItem[]): RenderResult
     name.textContent = item.name;
     container.appendChild(name);
 
-    if (item.price) {
+    if (item.price && shows(layout, 'price')) {
       const price = document.createElement('p');
       price.className = 'nsl-price';
       price.textContent = item.price;

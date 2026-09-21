@@ -26,7 +26,11 @@ export interface ImpressionTarget {
   position: number;
 }
 
-export function observeImpressions(config: EmbedConfig, targets: ImpressionTarget[]): () => void {
+export function observeImpressions(
+  config: EmbedConfig,
+  targets: ImpressionTarget[],
+  placement?: string | null,
+): () => void {
   // No IntersectionObserver means an old browser. Recording nothing is correct:
   // a scroll-position fallback would report impressions that never happened.
   if (typeof IntersectionObserver !== 'function' || targets.length === 0) {
@@ -54,7 +58,7 @@ export function observeImpressions(config: EmbedConfig, targets: ImpressionTarge
               item_id: target.itemId,
               request_id: target.requestId,
               position: target.position,
-            });
+            }, placement);
           }, DWELL_MS));
         } else {
           // Scrolled away before the dwell elapsed - not an impression.

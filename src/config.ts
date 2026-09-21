@@ -1,3 +1,4 @@
+import { debugRequested } from './debug';
 import type { EmbedConfig, MountConfig, Surface } from './types';
 
 const DEFAULT_ENDPOINT = 'https://console.neuronsearchlab.com';
@@ -27,7 +28,7 @@ export function readConfig(): EmbedConfig | null {
   return {
     key,
     endpoint: (script?.dataset.nslEndpoint?.trim() || DEFAULT_ENDPOINT).replace(/\/+$/, ''),
-    debug: script?.dataset.nslDebug !== undefined,
+    debug: debugRequested(script?.dataset.nslDebug !== undefined),
   };
 }
 
@@ -56,16 +57,28 @@ export function readMount(element: HTMLElement): MountConfig | null {
   const surface: Surface = raw;
 
   let itemUrl: string | null = null;
+  let itemSku: string | null = null;
+  let autoItem = false;
   if (surface === 'related') {
     const declared = element.dataset.nslItemUrl?.trim();
     // "auto" is the documented default and means "whatever page this is".
-    itemUrl = !declared || declared === 'auto' ? canonicalUrl() : declared;
+    const auto = !declared || declared === 'auto';
+    autoItem = auto;
+    itemUrl = auto ? canonicalUrl() : declared;
+    // Only what this element declares. The page's own sku - from JSON-LD or
+    // from nsl('page', ...) - is applied later, and only for an auto mount, so
+    // that a mount naming a specific item is never overridden by what the
+    // surrounding page happens to be about.
+    itemSku = auto ? (element.dataset.nslItemSku?.trim() || null) : null;
   }
 
   return {
     element,
     surface,
+    placement: element.dataset.nslPlacement?.trim() || null,
     itemUrl,
+    itemSku,
+    itemAuto: surface === 'related' ? autoItem : false,
     limit: parseLimit(element.dataset.nslLimit),
   };
 }

@@ -1,5 +1,8 @@
 import { readConfig } from './config';
-import { mountAll, watchForMounts } from './mount';
+import { mountAll, refreshMounts, watchForMounts } from './mount';
+import { applyCommand, readOrder, type Command } from './context';
+import { trackOrder } from './transport';
+import type { EmbedConfig } from './types';
 
 /**
  * @neuronsearchlab/embed
@@ -33,6 +36,7 @@ export function boot(): void {
   started = true;
 
   const start = () => {
+    drainQueue(config);
     mountAll(config);
     watchForMounts(config);
   };
@@ -42,6 +46,65 @@ export function boot(): void {
     document.addEventListener('DOMContentLoaded', start, { once: true });
   } else {
     start();
+  }
+}
+
+const COMMANDS = new Set<Command>(['page', 'cart', 'customer', 'order', 'consent', 'refresh']);
+
+/**
+ * Run one nsl() call.
+ *
+ * Commands are idempotent slot replacements rather than appends: calling
+ * nsl('cart', ...) twice describes one basket, not two. That is what lets the
+ * DOM reader and the queue write to the same record without a merge rule, and
+ * it is why a page may use both surfaces at once.
+ */
+function run(config: EmbedConfig, args: unknown[]): void {
+  const command = args[0] as Command;
+  if (!COMMANDS.has(command)) return;
+
+  if (command === 'refresh') {
+    refreshMounts(config);
+    return;
+  }
+
+  if (command === 'order') {
+    // The only command that writes. Everything else is advisory input to the
+    // next recommendation request.
+    const order = readOrder(args[1]);
+    if (order) void trackOrder(config, order);
+    return;
+  }
+
+  applyCommand(command, args[1]);
+}
+
+/**
+ * Replay whatever the page queued before we loaded, then take over.
+ *
+ * The stub on the page is the whole reason a customer can call nsl() from
+ * their own inline script without caring when our async tag finishes.
+ */
+function drainQueue(config: EmbedConfig): void {
+  const scope = window as unknown as Record<string, unknown>;
+  const existing = scope.nsl as { q?: unknown[][] } | undefined;
+  const queued = Array.isArray(existing?.q) ? existing.q : [];
+
+  const api = (...args: unknown[]) => run(config, args);
+  try {
+    scope.nsl = api;
+  } catch {
+    // A page that froze window.nsl keeps its own value; the queued calls
+    // below still run, and the documented fallback name still works.
+  }
+  if (scope.nsl !== api) scope.nslq = api;
+
+  for (const args of queued) {
+    try {
+      run(config, Array.from(args));
+    } catch {
+      // One malformed command must not stop the rest, or the strip.
+    }
   }
 }
 
@@ -56,5 +119,9 @@ try {
 }
 
 export { readConfig, canonicalUrl } from './config';
+export { readPageContext } from './page-context';
+export { readState, resetContext } from './context';
+export { resetDebug } from './debug';
 export { anonymousId, sessionId } from './identity';
 export type { EmbedConfig, RenderableItem, Surface } from './types';
+export type { PageContext } from './page-context';
