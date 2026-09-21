@@ -42,6 +42,8 @@ export async function fetchRecommendations(
         // only ever for a mount that means "whatever page this is".
         item_sku: (body.item_sku ?? (body.item_auto ? context.page.sku : null)) ?? undefined,
         page_type: context.page.type ?? undefined,
+        page_category: context.page.category ?? undefined,
+        page_query: context.page.query ?? undefined,
         // Withheld consent already emptied these upstream, in readState.
         cart: context.cart ?? undefined,
         customer: context.customer ?? undefined,

@@ -78,6 +78,26 @@ describe('nsl() command queue', () => {
     assert.deepEqual(recsBody(calls).cart.items.map(i => i.sku), ['B']);
   });
 
+  it('scopes a listing page to its category', async () => {
+    const { calls } = await boot(page(), dom => {
+      const w = dom.window;
+      w.nsl = function () { (w.nsl.q = w.nsl.q || []).push(arguments); };
+      w.nsl('page', { type: 'category', category: 'footwear' });
+      globalThis.window.nsl = w.nsl;
+    });
+    assert.equal(recsBody(calls).page_category, 'footwear');
+  });
+
+  it('passes the search a visitor just ran', async () => {
+    const { calls } = await boot(page(), dom => {
+      const w = dom.window;
+      w.nsl = function () { (w.nsl.q = w.nsl.q || []).push(arguments); };
+      w.nsl('page', { type: 'search', query: 'running shoes' });
+      globalThis.window.nsl = w.nsl;
+    });
+    assert.equal(recsBody(calls).page_query, 'running shoes');
+  });
+
   it('withholds cart and customer when consent is refused', async () => {
     const { calls } = await boot(page(), dom => {
       const w = dom.window;
