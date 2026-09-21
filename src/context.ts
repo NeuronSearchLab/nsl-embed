@@ -37,8 +37,6 @@ export interface OrderLine {
 export interface PageState {
   type: string | null;
   sku: string | null;
-  category: string | null;
-  query: string | null;
 }
 
 export interface PageContextState {
@@ -67,7 +65,7 @@ function positive(value: unknown): number | null {
 }
 
 const state: PageContextState = {
-  page: { type: null, sku: null, category: null, query: null },
+  page: { type: null, sku: null },
   cart: null,
   customer: null,
   consent: true,
@@ -112,11 +110,15 @@ function applyPage(input: unknown): void {
 
   // Slot replacement, not merge: a route change in a single-page app must be
   // able to clear the previous page's item, not inherit it.
+  //
+  // `category` and `query` are deliberately absent. Accepting them would
+  // imply the serving layer does something with them, and it does not - a
+  // field that is collected, transmitted and dropped is worse than no field,
+  // because it looks like a working feature. They belong here the day
+  // category and search tagging are actually wired through.
   state.page = {
     type: text(value.type, 64),
     sku: text(item.sku) ?? text(value.sku),
-    category: text(value.category),
-    query: text(value.query),
   };
 }
 
@@ -226,7 +228,7 @@ export function applyCommand(command: Command, payload: unknown): void {
 
 /** Test seam. */
 export function resetContext(): void {
-  state.page = { type: null, sku: null, category: null, query: null };
+  state.page = { type: null, sku: null };
   state.cart = null;
   state.customer = null;
   state.consent = true;
