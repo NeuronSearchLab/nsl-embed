@@ -7,7 +7,7 @@ One script tag and one placeholder element. No SDK, no backend, no event schema,
 and no mapping your product ids onto NeuronSearchLab's.
 
 ```html
-<script src="https://cdn.neuronsearchlab.com/embed/1.0.0/nsl.min.js"
+<script src="https://cdn.neuronsearchlab.com/embed/1.1.0/nsl.min.js"
         data-nsl-key="nsl_pk_YOUR_KEY" async></script>
 
 <div data-nsl-rec="related" data-nsl-item-url="auto" data-nsl-limit="6"></div>
