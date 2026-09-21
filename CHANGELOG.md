@@ -1,0 +1,23 @@
+# @neuronsearchlab/embed
+
+## 1.1.0
+
+### Minor Changes
+
+- 8e193ef: Add a command queue, conversion reporting, and named placements.
+
+  `nsl('page' | 'cart' | 'customer' | 'order' | 'consent' | 'refresh', …)` lets the page say what is happening now. The crawl can read a product page; it can never see a basket, a signed-in visitor, or a thank-you page, because those are `noindex`. Commands replace rather than accumulate, and they can be mixed with JSON-LD - there is no mode to choose. `<script type="application/json" data-nsl-context>` does the same job for pages that cannot run script. Context resolves against the catalogue or is dropped: it can never create an item.
+
+  `nsl('order', …)` reports conversions as `purchase_reported` - a separate, zero-weight key the server keeps out of training, because a browser cannot prove a sale. Lines are keyed on the order id, so a reloaded thank-you page cannot double-count, and a verified Shopify order supersedes the browser's report in place.
+
+  `data-nsl-placement` names a strip so its context, item count, layout and heading move into the console. An unrecognised placement still renders on tenant defaults - renaming one never blanks a live page.
+
+  Also fixes a single-page-app bug: a framework reusing a mounted node left it in the mounted set, so the strip never refetched and its observers and click listeners outlived the route. `nsl('refresh')` forgets the element and runs its teardowns first.
+
+- 8e193ef: Identify the page by its JSON-LD as well as its canonical URL, and explain an empty strip on the page.
+
+  A canonical URL is only a reliable key while the one a visitor's browser sees matches the one the crawler stored, and locale prefixes, per-market canonicalisation and AMP copies all break that. When they did, the strip rendered unrelated items with nothing to say why. The widget now also reads `sku`/`mpn`/`productID`/`isbn` from the page's JSON-LD and sends both; whichever resolves against the catalogue wins. No markup change is needed, because this is the same structured data the crawler already indexes. `data-nsl-item-sku` overrides it.
+
+  `?nsl_debug=1` on any page now opens a panel naming what each placeholder resolved to and why it is empty - a rejected origin, an item that is not in the catalogue, or a response with no `request_id` so nothing is being recorded. `data-nsl-debug` does the same permanently; the query parameter needs no deploy, which matters when the tag lives in a theme.
+
+  Also: URLs from the catalogue are now checked to be `http(s)` before being used as an `href` or `src`.
