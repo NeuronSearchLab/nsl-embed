@@ -114,7 +114,7 @@ describe('nsl() command queue', () => {
     assert.equal(body.item_url, 'https://shop.example.com/p/shoe');
   });
 
-  it('reports an order as purchase_reported, never as purchase', async () => {
+  it('reports an order as order_reported, never as purchase', async () => {
     const dom = installDom({ html: page() });
     doms.push(dom);
     const calls = stubFetch(() => ({ json: {} }));
@@ -132,7 +132,7 @@ describe('nsl() command queue', () => {
 
     const order = calls.find(call => call.url.includes('/events'));
     assert.ok(order, 'expected an events request');
-    assert.equal(order.body.events[0].event, 'purchase_reported');
+    assert.equal(order.body.events[0].event, 'order_reported');
     assert.equal(order.body.events[0].order_id, 'SO-1001');
     assert.equal(order.body.events[0].item_sku, 'A');
   });

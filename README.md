@@ -7,7 +7,7 @@ One script tag and one placeholder element. No SDK, no backend, no event schema,
 and no mapping your product ids onto NeuronSearchLab's.
 
 ```html
-<script src="https://cdn.neuronsearchlab.com/embed/1.2.0/nsl.min.js"
+<script src="https://cdn.neuronsearchlab.com/embed/1.3.0/nsl.min.js"
         data-nsl-key="nsl_pk_YOUR_KEY" async></script>
 
 <div data-nsl-rec="related" data-nsl-item-url="auto" data-nsl-limit="6"></div>
@@ -76,10 +76,22 @@ Per-version integrity hashes are published with each release.
 
 - A recommendation request carrying the page's canonical URL, your publishable
   key (as a header, never in the URL), and a random first-party visitor id.
-- Impression events, once a card has been at least 50% visible for two seconds.
-  Scrolling past quickly is not an impression, and scrolling back does not
-  double-count.
-- Click events, delivered with `sendBeacon` so they survive the navigation.
+- `rec_impression`, once a recommended card has been at least 50% visible for
+  two seconds. Scrolling past quickly is not an impression, and scrolling back
+  does not double-count.
+- `rec_click`, delivered with `sendBeacon` so it survives the navigation.
+- `view`, once per product page, from the sku the page already carries
+  (`nsl('page', …)` or JSON-LD), or its canonical URL.
+- `add_to_cart`, when the basket the page describes with `nsl('cart', …)` gains
+  an item. The first basket of a session is a baseline, not an addition.
+- `order_reported`, for each line of `nsl('order', …)` on a thank-you page.
+
+These are NSL signals, not event names. Creating an embed key in the console
+creates an event type for each one - with its own ID, label and weight - and the
+workspace's signal bindings decide which event ID every signal lands on. Rebind
+a signal to an event you already track under **Events → Integration signals**;
+nothing is ever matched by name. `view` and `add_to_cart` are not sent while
+`nsl('consent', false)` is in effect.
 
 The widget never intercepts or delays a click: your navigation happens exactly as
 it would without it.

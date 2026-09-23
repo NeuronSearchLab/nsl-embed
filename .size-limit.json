@@ -2,7 +2,7 @@
   {
     "name": "script tag (gzipped) - working budget, tighten as features land",
     "path": "dist/nsl.min.js",
-    "limit": "7 kB",
+    "limit": "7.25 kB",
     "gzip": true
   },
   {

@@ -83,7 +83,8 @@ describe('telemetry', () => {
 
     const events = eventCalls(calls);
     assert.equal(events.length, 1);
-    assert.equal(events[0].body.events[0].event, 'view');
+    // A signal, not an event name: the workspace's binding picks the event id.
+    assert.equal(events[0].body.events[0].event, 'rec_impression');
     assert.equal(events[0].body.events[0].item_id, 3187);
     assert.equal(events[0].body.events[0].position, 0);
     // The nonce the server validates against.
@@ -123,7 +124,7 @@ describe('telemetry', () => {
     await new Promise(resolve => setTimeout(resolve, 2400));
 
     const views = eventCalls(calls).flatMap(call => call.body.events);
-    assert.equal(views.filter(event => event.event === 'view').length, 1);
+    assert.equal(views.filter(event => event.event === 'rec_impression').length, 1);
     assert.equal(io.observed.includes(cards[0]), false, 'should have unobserved');
   });
 
@@ -142,7 +143,7 @@ describe('telemetry', () => {
     assert.match(beacons[0].url, /\/api\/embed\/v1\/events$/);
 
     const body = await beaconBody(beacons[0]);
-    const click = body.events.find(event => event.event === 'click');
+    const click = body.events.find(event => event.event === 'rec_click');
     assert.ok(click, 'expected a click event');
     assert.equal(click.item_id, 3188);
     assert.equal(click.position, 1);

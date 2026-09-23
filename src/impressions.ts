@@ -54,7 +54,7 @@ export function observeImpressions(
             timers.delete(entry.target);
             observer.unobserve(entry.target);
             track(config, {
-              event: 'view',
+              event: 'rec_impression',
               item_id: target.itemId,
               request_id: target.requestId,
               position: target.position,

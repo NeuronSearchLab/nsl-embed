@@ -145,7 +145,7 @@ export function track(config: EmbedConfig, event: TrackedEvent, placement?: stri
 
   // Clicks go immediately: the navigation that follows is what tears the page
   // down, and the batch window would lose them.
-  if (event.event === 'click') {
+  if (event.event === 'rec_click') {
     flush(config, true);
     return;
   }
@@ -162,14 +162,14 @@ export function track(config: EmbedConfig, event: TrackedEvent, placement?: stri
  * within seconds, and this is the one signal that cannot be reconstructed
  * from a later pageview.
  *
- * These land on `purchase_reported`, not `purchase` - a separate, zero-weight
- * key the server quarantines out of training, because a browser cannot prove
- * a sale happened. They are for attribution, and the verified Shopify row for
- * the same order supersedes them.
+ * These are `order_reported`, never `purchase` - a separate signal the
+ * workspace binds to a zero-weight event by default, because a browser cannot
+ * prove a sale happened. They are for attribution, and the verified Shopify
+ * row for the same order supersedes them.
  */
 export async function trackOrder(config: EmbedConfig, order: OrderPayload): Promise<void> {
   const events = order.items.map(line => ({
-    event: 'purchase_reported' as const,
+    event: 'order_reported' as const,
     item_id: line.item_id,
     item_sku: line.sku,
     order_id: order.id,

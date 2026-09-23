@@ -37,7 +37,7 @@ export function observeClicks(
       const target = lookup(node);
       if (target) {
         track(config, {
-          event: 'click',
+          event: 'rec_click',
           item_id: target.itemId,
           request_id: requestId,
           position: target.position,

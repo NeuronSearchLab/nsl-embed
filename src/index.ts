@@ -2,6 +2,7 @@ import { readConfig } from './config';
 import { mountAll, refreshMounts, watchForMounts } from './mount';
 import { applyCommand, readOrder, type Command } from './context';
 import { trackOrder } from './transport';
+import { reportCartAdditions, reportPageView } from './signals';
 import type { EmbedConfig } from './types';
 
 /**
@@ -37,6 +38,10 @@ export function boot(): void {
 
   const start = () => {
     drainQueue(config);
+    // After the queue, so a page that says what it is before we load is heard
+    // once, with everything it said.
+    reportPageView(config);
+    reportCartAdditions(config);
     mountAll(config);
     watchForMounts(config);
   };
@@ -50,6 +55,9 @@ export function boot(): void {
 }
 
 const COMMANDS = new Set<Command>(['page', 'cart', 'customer', 'order', 'consent', 'refresh']);
+
+/** True while replaying the pre-load queue. */
+let draining = false;
 
 /**
  * Run one nsl() call.
@@ -77,6 +85,14 @@ function run(config: EmbedConfig, args: unknown[]): void {
   }
 
   applyCommand(command, args[1]);
+
+  // A single-page app changes page and basket without reloading us, so the
+  // commands that describe them are also the moments they happen. Commands
+  // replayed from the queue are skipped here; start() reports once after them.
+  if (!draining) {
+    if (command === 'page') reportPageView(config);
+    if (command === 'cart') reportCartAdditions(config);
+  }
 }
 
 /**
@@ -91,6 +107,7 @@ function drainQueue(config: EmbedConfig): void {
   const queued = Array.isArray(existing?.q) ? existing.q : [];
 
   const api = (...args: unknown[]) => run(config, args);
+  draining = true;
   try {
     scope.nsl = api;
   } catch {
@@ -106,6 +123,7 @@ function drainQueue(config: EmbedConfig): void {
       // One malformed command must not stop the rest, or the strip.
     }
   }
+  draining = false;
 }
 
 // Auto-boot for the script-tag build. Wrapped because a throw here would
@@ -121,6 +139,7 @@ try {
 export { readConfig, canonicalUrl } from './config';
 export { readPageContext } from './page-context';
 export { readState, resetContext } from './context';
+export { resetSignals } from './signals';
 export { resetDebug } from './debug';
 export { anonymousId, sessionId } from './identity';
 export type { EmbedConfig, RenderableItem, Surface } from './types';

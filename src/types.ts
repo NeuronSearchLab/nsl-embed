@@ -76,9 +76,23 @@ export interface RenderableItem {
   price: string | null;
 }
 
-export interface TrackedEvent {
-  event: 'view' | 'click';
-  item_id: number;
-  request_id: string;
-  position: number;
-}
+/**
+ * What the widget reports. Each `event` is an NSL signal, not an event name:
+ * the workspace's signal bindings decide which of its event ids receives it,
+ * so nothing here depends on how anyone named their events.
+ */
+export type TrackedEvent =
+  | {
+    /** A recommended card, half visible for two seconds / clicked. */
+    event: 'rec_impression' | 'rec_click';
+    item_id: number;
+    request_id: string;
+    position: number;
+  }
+  | {
+    /** The page itself: a product page was opened, or an item went in the basket. */
+    event: 'view' | 'add_to_cart';
+    item_sku?: string;
+    item_url?: string;
+    quantity?: number;
+  };
