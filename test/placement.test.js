@@ -100,3 +100,25 @@ describe('placements', () => {
     if (events) assert.equal(events.body.placement, 'pdp-related');
   });
 });
+
+describe('strip layout on real themes', () => {
+  const doms = [];
+  after(() => doms.forEach(dom => dom.restore()));
+
+  it('stays visible on themes that hide div:empty, and keeps image-less cards aligned', async () => {
+    const dom = installDom({ html: page('<style>div:empty{display:none}</style><div data-nsl-rec="related"></div>') });
+    doms.push(dom);
+    stubFetch(() => ({ json: { request_id: 'req-1', items: [
+      ...ITEMS,
+      { id: 3188, item: { id: 3188, name: 'Plain Sock', metadata: { price: '5.00', currency: 'GBP' } } },
+    ] } }));
+    const mod = await freshImport(SRC);
+    mod.resetContext?.();
+    mod.boot();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const host = dom.document.querySelector('[data-nsl-rec]');
+    assert.equal(host.style.display, 'block');
+    assert.equal(host.shadowRoot.querySelectorAll('.nsl-media').length, 2);
+    assert.equal(host.shadowRoot.querySelectorAll('.nsl-media img').length, 1);
+  });
+});

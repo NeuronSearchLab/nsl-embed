@@ -202,15 +202,19 @@ export function render(
       container.className = 'nsl-link';
     }
 
-    if (item.imageUrl && shows(layout, 'image')) {
+    if (shows(layout, 'image')) {
+      // The media box is drawn even for an item with no image, so a catalogue
+      // with a few image-less products still lines up as one row of cards.
       const media = document.createElement('div');
       media.className = 'nsl-media';
-      const img = document.createElement('img');
-      img.src = item.imageUrl;
-      img.alt = '';
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      media.appendChild(img);
+      if (item.imageUrl) {
+        const img = document.createElement('img');
+        img.src = item.imageUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        media.appendChild(img);
+      }
       container.appendChild(media);
     }
 
@@ -234,9 +238,14 @@ export function render(
   });
 
   root.appendChild(list);
+  // Rendered into a shadow root, the host has no children of its own and so
+  // matches :empty - which Shopify's Dawn and many other themes hide with
+  // div:empty { display: none }. An inline style outranks that rule.
+  if (cards.length > 0) host.style.display = 'block';
   return { cards };
 }
 
 export function clear(host: HTMLElement): void {
   if (host.shadowRoot) host.shadowRoot.textContent = '';
+  host.style.removeProperty('display');
 }
