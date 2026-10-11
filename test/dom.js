@@ -8,7 +8,12 @@ import { Window } from 'happy-dom';
  * in place - otherwise the first test's window leaks into every later one.
  */
 export function installDom({ html = '<!doctype html><html><body></body></html>', url = 'https://shop.example.com/p/shoe' } = {}) {
-  const window = new Window({ url });
+  const window = new Window({
+    url,
+    // The widget module is imported explicitly below. Loading fixture script
+    // or stylesheet URLs would make unit tests depend on external DNS.
+    settings: { disableJavaScriptFileLoading: true, disableCSSFileLoading: true },
+  });
   window.document.write(html);
 
   const globals = {
