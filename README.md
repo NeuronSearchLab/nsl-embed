@@ -76,6 +76,8 @@ Per-version integrity hashes are published with each release.
 
 - A recommendation request carrying the page's canonical URL, your publishable
   key (as a header, never in the URL), and a random first-party visitor id.
+  Placeholders that load together share one request (up to eight per call),
+  and each strip is still billed as its own recommendation set.
 - `rec_impression`, once a recommended card has been at least 50% visible for
   two seconds. Scrolling past quickly is not an impression, and scrolling back
   does not double-count.

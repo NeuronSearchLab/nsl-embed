@@ -20,7 +20,32 @@ let queue: TrackedEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let listenersBound = false;
 
-export async function fetchRecommendations(
+type PendingStrip = {
+  config: EmbedConfig;
+  /** The strip, and the page as it stood when the strip asked. */
+  fields: Record<string, unknown>;
+  page: Record<string, unknown>;
+  resolve: (response: RecommendationsResponse | null) => void;
+};
+
+type BatchResult = RecommendationsResponse & { key?: string; error?: string };
+
+/** The most strips the API serves in one batch; more go in further batches. */
+const MAX_STRIPS_PER_BATCH = 8;
+
+let pendingStrips: PendingStrip[] = [];
+/** Set once a console without the batch route answers; strips go one by one. */
+let batchUnavailable = false;
+
+/**
+ * One strip's recommendations.
+ *
+ * Every strip that asks in the same tick - which is all of them on page load -
+ * shares one request to the batch endpoint, so a page with five placements
+ * costs the visitor one round trip and the API one read of their state. A lone
+ * strip, or a console that predates batching, uses the single-strip endpoint.
+ */
+export function fetchRecommendations(
   config: EmbedConfig,
   body: {
     item_url?: string | null;
@@ -31,33 +56,84 @@ export async function fetchRecommendations(
   },
 ): Promise<RecommendationsResponse | null> {
   const context = readState();
-  try {
-    const response = await fetch(`${config.endpoint}/api/embed/v1/recommendations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
-      body: JSON.stringify({
+  return new Promise((resolve) => {
+    if (!pendingStrips.length) setTimeout(flushStrips, 0);
+    pendingStrips.push({
+      config,
+      fields: {
         item_url: body.item_url ?? undefined,
         // Most specific wins: data-nsl-item-sku on the element, then what the
         // page said about itself - via nsl('page', ...) or its JSON-LD - and
         // only ever for a mount that means "whatever page this is".
         item_sku: (body.item_sku ?? (body.item_auto ? context.page.sku : null)) ?? undefined,
+        placement: body.placement ?? undefined,
+        limit: body.limit,
+      },
+      page: {
         page_type: context.page.type ?? undefined,
         page_category: context.page.category ?? undefined,
         page_query: context.page.query ?? undefined,
         // Withheld consent already emptied these upstream, in readState.
         cart: context.cart ?? undefined,
         customer: context.customer ?? undefined,
-        placement: body.placement ?? undefined,
-        limit: body.limit,
         anonymous_id: anonymousId(),
         session_id: sessionId(),
-      }),
+      },
+      resolve,
     });
-    if (!response.ok) return null;
-    return (await response.json()) as RecommendationsResponse;
+  });
+}
+
+function flushStrips(): void {
+  const strips = pendingStrips;
+  pendingStrips = [];
+  // Strips for different workspaces cannot share a request.
+  const groups: Record<string, PendingStrip[]> = {};
+  for (const strip of strips) (groups[strip.config.endpoint + ' ' + strip.config.key] ??= []).push(strip);
+  for (const group of Object.values(groups)) {
+    for (let i = 0; i < group.length; i += MAX_STRIPS_PER_BATCH) {
+      const chunk = group.slice(i, i + MAX_STRIPS_PER_BATCH);
+      if (chunk.length > 1 && !batchUnavailable) void fetchBatch(chunk);
+      else chunk.forEach(fetchOne);
+    }
+  }
+}
+
+async function post(config: EmbedConfig, path: string, body: unknown): Promise<any> {
+  try {
+    const response = await fetch(`${config.endpoint}/api/embed/v1/recommendations${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
+      body: JSON.stringify(body),
+    });
+    return response.ok ? await response.json() : response.status;
   } catch {
     return null;
   }
+}
+
+async function fetchOne(strip: PendingStrip): Promise<void> {
+  const answer = await post(strip.config, '', { ...strip.page, ...strip.fields });
+  strip.resolve(typeof answer == 'object' ? answer : null);
+}
+
+async function fetchBatch(strips: PendingStrip[]): Promise<void> {
+  const { config, page } = strips[0]!;
+  const answer = await post(config, '/batch', {
+    ...page,
+    strips: strips.map((strip, key) => ({ key: '' + key, ...strip.fields })),
+  });
+  if (answer == 404 || answer == 405) {
+    // A console without the batch route: serve these and every later strip
+    // the way it always did.
+    batchUnavailable = true;
+    return strips.forEach(fetchOne);
+  }
+  const results: BatchResult[] = answer?.results ?? [];
+  strips.forEach((strip, key) => {
+    const result = results.find((candidate) => candidate.key == '' + key);
+    strip.resolve(result && !result.error ? result : null);
+  });
 }
 
 /**
@@ -201,6 +277,8 @@ export async function trackOrder(config: EmbedConfig, order: OrderPayload): Prom
 
 /** Test seam. */
 export function resetTransport(): void {
+  pendingStrips = [];
+  batchUnavailable = false;
   queue = [];
   queuedPlacement = null;
   if (flushTimer) clearTimeout(flushTimer);
