@@ -2,9 +2,19 @@ name: Deploy to CDN
 
 # Publishing to npm is the changesets release; this puts the same bundle behind
 # cdn.neuronsearchlab.com, which is what customer <script> tags actually load.
+# release.yml calls it after every npm publish; run it by hand to redeploy.
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      ref:
+        description: Commit to build, normally the version commit release.yml pushed
+        type: string
+        required: false
   workflow_dispatch:
     inputs:
       version:
@@ -21,6 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -40,7 +52,7 @@ jobs:
       - name: Resolve version
         id: version
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
             VERSION=$(node -p "require('./package.json').version")
           fi
