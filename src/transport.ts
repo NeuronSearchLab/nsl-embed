@@ -20,28 +20,20 @@ let queue: TrackedEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let listenersBound = false;
 
-type RecommendationRequest = {
-  item_url?: string | null;
-  item_sku?: string | null;
-  item_auto?: boolean;
-  placement?: string | null;
-  limit: number;
-};
-
 type PendingStrip = {
   config: EmbedConfig;
-  body: RecommendationRequest;
-  /** The page context and item as they stood when the strip asked. */
+  /** The strip, and the page as it stood when the strip asked. */
+  fields: Record<string, unknown>;
   page: Record<string, unknown>;
-  itemSku: string | undefined;
   resolve: (response: RecommendationsResponse | null) => void;
 };
+
+type BatchResult = RecommendationsResponse & { key?: string; error?: string };
 
 /** The most strips the API serves in one batch; more go in further batches. */
 const MAX_STRIPS_PER_BATCH = 8;
 
 let pendingStrips: PendingStrip[] = [];
-let batchScheduled = false;
 /** Set once a console without the batch route answers; strips go one by one. */
 let batchUnavailable = false;
 
@@ -55,124 +47,92 @@ let batchUnavailable = false;
  */
 export function fetchRecommendations(
   config: EmbedConfig,
-  body: RecommendationRequest,
+  body: {
+    item_url?: string | null;
+    item_sku?: string | null;
+    item_auto?: boolean;
+    placement?: string | null;
+    limit: number;
+  },
 ): Promise<RecommendationsResponse | null> {
+  const context = readState();
   return new Promise((resolve) => {
-    pendingStrips.push({ config, body, page: pageFields(), itemSku: stripItemSku(body), resolve });
-    if (batchScheduled) return;
-    batchScheduled = true;
-    setTimeout(flushStrips, 0);
+    if (!pendingStrips.length) setTimeout(flushStrips, 0);
+    pendingStrips.push({
+      config,
+      fields: {
+        item_url: body.item_url ?? undefined,
+        // Most specific wins: data-nsl-item-sku on the element, then what the
+        // page said about itself - via nsl('page', ...) or its JSON-LD - and
+        // only ever for a mount that means "whatever page this is".
+        item_sku: (body.item_sku ?? (body.item_auto ? context.page.sku : null)) ?? undefined,
+        placement: body.placement ?? undefined,
+        limit: body.limit,
+      },
+      page: {
+        page_type: context.page.type ?? undefined,
+        page_category: context.page.category ?? undefined,
+        page_query: context.page.query ?? undefined,
+        // Withheld consent already emptied these upstream, in readState.
+        cart: context.cart ?? undefined,
+        customer: context.customer ?? undefined,
+        anonymous_id: anonymousId(),
+        session_id: sessionId(),
+      },
+      resolve,
+    });
   });
 }
 
 function flushStrips(): void {
-  batchScheduled = false;
   const strips = pendingStrips;
   pendingStrips = [];
   // Strips for different workspaces cannot share a request.
-  const groups = new Map<string, PendingStrip[]>();
-  for (const strip of strips) {
-    const group = `${strip.config.endpoint}\u0000${strip.config.key}`;
-    groups.set(group, [...(groups.get(group) ?? []), strip]);
-  }
-  for (const group of groups.values()) {
+  const groups: Record<string, PendingStrip[]> = {};
+  for (const strip of strips) (groups[strip.config.endpoint + ' ' + strip.config.key] ??= []).push(strip);
+  for (const group of Object.values(groups)) {
     for (let i = 0; i < group.length; i += MAX_STRIPS_PER_BATCH) {
       const chunk = group.slice(i, i + MAX_STRIPS_PER_BATCH);
-      if (chunk.length === 1 || batchUnavailable) {
-        for (const strip of chunk) void fetchOne(strip).then(strip.resolve);
-      } else {
-        void fetchBatch(chunk);
-      }
+      if (chunk.length > 1 && !batchUnavailable) void fetchBatch(chunk);
+      else chunk.forEach(fetchOne);
     }
   }
 }
 
-/** What the page says about itself, shared by every strip on it. */
-function pageFields(): Record<string, unknown> {
-  const context = readState();
-  return {
-    page_type: context.page.type ?? undefined,
-    page_category: context.page.category ?? undefined,
-    page_query: context.page.query ?? undefined,
-    // Withheld consent already emptied these upstream, in readState.
-    cart: context.cart ?? undefined,
-    customer: context.customer ?? undefined,
-    anonymous_id: anonymousId(),
-    session_id: sessionId(),
-  };
-}
-
-function stripItemSku(body: RecommendationRequest): string | undefined {
-  // Most specific wins: data-nsl-item-sku on the element, then what the page
-  // said about itself - via nsl('page', ...) or its JSON-LD - and only ever
-  // for a mount that means "whatever page this is".
-  return (body.item_sku ?? (body.item_auto ? readState().page.sku : null)) ?? undefined;
-}
-
-async function fetchOne(strip: PendingStrip): Promise<RecommendationsResponse | null> {
-  const { config, body } = strip;
+async function post(config: EmbedConfig, path: string, body: unknown): Promise<any> {
   try {
-    const response = await fetch(`${config.endpoint}/api/embed/v1/recommendations`, {
+    const response = await fetch(`${config.endpoint}/api/embed/v1/recommendations${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
-      body: JSON.stringify({
-        ...strip.page,
-        item_url: body.item_url ?? undefined,
-        item_sku: strip.itemSku,
-        placement: body.placement ?? undefined,
-        limit: body.limit,
-      }),
+      body: JSON.stringify(body),
     });
-    if (!response.ok) return null;
-    return (await response.json()) as RecommendationsResponse;
+    return response.ok ? await response.json() : response.status;
   } catch {
     return null;
   }
 }
 
-type BatchResult = RecommendationsResponse & { key?: string; error?: string };
+async function fetchOne(strip: PendingStrip): Promise<void> {
+  const answer = await post(strip.config, '', { ...strip.page, ...strip.fields });
+  strip.resolve(typeof answer == 'object' ? answer : null);
+}
 
 async function fetchBatch(strips: PendingStrip[]): Promise<void> {
-  const first = strips[0];
-  if (!first) return;
-  const { config } = first;
-  let results: BatchResult[] | null = null;
-  try {
-    const response = await fetch(`${config.endpoint}/api/embed/v1/recommendations/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
-      body: JSON.stringify({
-        ...first.page,
-        strips: strips.map((strip, index) => ({
-          key: String(index),
-          item_url: strip.body.item_url ?? undefined,
-          item_sku: strip.itemSku,
-          placement: strip.body.placement ?? undefined,
-          limit: strip.body.limit,
-        })),
-      }),
-    });
-    if (response.status === 404 || response.status === 405) {
-      // A console without the batch route: serve these and every later strip
-      // the way it always did.
-      batchUnavailable = true;
-      for (const strip of strips) void fetchOne(strip).then(strip.resolve);
-      return;
-    }
-    if (response.ok) results = ((await response.json()) as { results?: BatchResult[] }).results ?? null;
-  } catch {
-    results = null;
+  const { config, page } = strips[0]!;
+  const answer = await post(config, '/batch', {
+    ...page,
+    strips: strips.map((strip, key) => ({ key: '' + key, ...strip.fields })),
+  });
+  if (answer == 404 || answer == 405) {
+    // A console without the batch route: serve these and every later strip
+    // the way it always did.
+    batchUnavailable = true;
+    return strips.forEach(fetchOne);
   }
-
-  const byKey = new Map((results ?? []).map((result) => [String(result.key), result]));
-  strips.forEach((strip, index) => {
-    const result = byKey.get(String(index));
-    if (!result || result.error) {
-      strip.resolve(null);
-      return;
-    }
-    const { key: _key, error: _error, ...served } = result;
-    strip.resolve(served as RecommendationsResponse);
+  const results: BatchResult[] = answer?.results ?? [];
+  strips.forEach((strip, key) => {
+    const result = results.find((candidate) => candidate.key == '' + key);
+    strip.resolve(result && !result.error ? result : null);
   });
 }
 
@@ -318,7 +278,6 @@ export async function trackOrder(config: EmbedConfig, order: OrderPayload): Prom
 /** Test seam. */
 export function resetTransport(): void {
   pendingStrips = [];
-  batchScheduled = false;
   batchUnavailable = false;
   queue = [];
   queuedPlacement = null;
