@@ -93,15 +93,71 @@ creates an event type for each one - with its own ID, label and weight - and the
 workspace's signal bindings decide which event ID every signal lands on. Rebind
 a signal to an event you already track under **Events → Integration signals**;
 nothing is ever matched by name. `view` and `add_to_cart` are not sent while
-`nsl('consent', false)` is in effect.
+consent is withheld (see [Consent](#consent)).
 
 The widget never intercepts or delays a click: your navigation happens exactly as
 it would without it.
 
-No cookies, no third-party storage, no personal data. Visitor and session ids are
-random values in first-party `localStorage` and `sessionStorage`. If storage is
-unavailable — private browsing, blocked site data — the widget still works and
-simply does not remember the visitor between pages.
+No cookies, no third-party storage. Visitor and session ids are random values in
+first-party `localStorage` (`nsl_aid`) and `sessionStorage` (`nsl_sid`, plus
+`nsl_sid_ts` for the session's last activity). A session ends when the tab
+closes or after 30 minutes without activity. If storage is unavailable —
+private browsing, blocked site data — the widget still works and simply does
+not remember the visitor between pages.
+
+## Consent
+
+By default consent is granted: the widget stores its ids and sends the cart and
+customer you describe. Existing installs behave exactly as before.
+
+While consent is withheld the widget still renders recommendations, but only
+from what the page is about. It keeps its ids in memory for the current page,
+never reads or writes `localStorage` or `sessionStorage`, and sends no cart, no
+customer, no `view` and no `add_to_cart`.
+
+| How | Effect |
+|---|---|
+| *(nothing)* | Granted. |
+| `data-nsl-consent="pending"` on the script tag | Withheld from the first line of code until `nsl('consent', true)`. |
+| `nsl('consent', true)` | Granted. The ids already in use on this page are stored, unless the visitor consented on an earlier visit, in which case their stored id is used. |
+| `nsl('consent', false)` | Withheld. If the widget had already stored anything, that is withdrawal: `nsl_aid`, `nsl_sid`, `nsl_sid_ts`, `nsl_linked` and the basket baseline are deleted, and both ids are replaced so later events cannot be joined to earlier ones. |
+
+**UK and EU sites:** storing an identifier for personalisation needs consent
+first. Add `data-nsl-consent="pending"` to the tag and call `nsl('consent', …)`
+from your consent platform whenever its answer is known or changes:
+
+```html
+<script src="https://cdn.neuronsearchlab.com/embed/1.5.0/nsl.min.js"
+        data-nsl-key="nsl_pk_YOUR_KEY" data-nsl-consent="pending" async></script>
+<script>
+  window.nsl = window.nsl || function () { (window.nsl.q = window.nsl.q || []).push(arguments); };
+  // From your consent platform's callback:
+  nsl('consent', visitorAllowedPersonalisation);
+</script>
+```
+
+Calling `nsl('consent', false)` before the widget has stored anything is also
+safe - it withholds without deleting - so a page that says "not yet" while its
+banner loads does not lose a returning visitor's id.
+
+## Signed-in shoppers
+
+```js
+nsl('customer', { id: 'your-customer-id' }); // on sign-in, or on every page while signed in
+nsl('reset');                                // on sign-out
+```
+
+While consent is granted, `customer` is sent with recommendation requests and
+events, so a signed-in shopper's recommendations and behaviour share one
+profile. The first time an anonymous id meets a customer id, the widget calls
+`/api/embed/v1/identify` once and remembers the pair (`nsl_linked`); NSL then
+moves that visitor's earlier anonymous events onto the customer. The customer
+id is hashed per workspace on the server, and nothing else about the shopper is
+sent. Nothing is linked while consent is withheld.
+
+`reset` is for sign-out on a shared device: it forgets the customer and replaces
+both the visitor and session ids, so the next person is not served the last
+one's recommendations.
 
 ## Failure behaviour
 

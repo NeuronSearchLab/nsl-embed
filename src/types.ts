@@ -7,6 +7,11 @@ export interface EmbedConfig {
   endpoint: string;
   /** Emit diagnostics to the console. Off unless data-nsl-debug is present. */
   debug: boolean;
+  /**
+   * data-nsl-consent="pending": start with consent withheld - no storage, no
+   * personal context - until the page calls nsl('consent', true).
+   */
+  consentPending: boolean;
 }
 
 /** Enumerated layout choices, resolved server-side from the placement. */
