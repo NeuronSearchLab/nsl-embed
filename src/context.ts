@@ -1,4 +1,5 @@
 import { readPageContext } from './page-context';
+import { resetIdentity, setIdentityConsent } from './identity';
 
 /**
  * What the page says is happening right now.
@@ -171,7 +172,7 @@ export function readState(): PageContextState {
   return state;
 }
 
-export type Command = 'page' | 'cart' | 'customer' | 'order' | 'consent' | 'refresh';
+export type Command = 'page' | 'cart' | 'customer' | 'order' | 'consent' | 'refresh' | 'reset';
 
 export interface OrderPayload {
   id: string;
@@ -216,14 +217,34 @@ export function applyCommand(command: Command, payload: unknown): void {
     case 'customer': return applyCustomer(payload);
     case 'consent': {
       state.consent = payload !== false;
+      // Storage follows: persisted when granted, removed when withdrawn.
+      setIdentityConsent(state.consent);
       if (!state.consent) {
         state.cart = null;
         state.customer = null;
       }
       return;
     }
+    case 'reset': {
+      // Logout. The next visitor on this device is somebody else.
+      state.customer = null;
+      resetIdentity();
+      return;
+    }
     default: return;
   }
+}
+
+/**
+ * data-nsl-consent="pending": withheld until the page says otherwise.
+ *
+ * Not a withdrawal - nothing has been stored yet - and nothing the page has
+ * described is discarded: readState hides it while consent is withheld, and it
+ * is all there the moment nsl('consent', true) arrives.
+ */
+export function withholdConsent(): void {
+  state.consent = false;
+  setIdentityConsent(false);
 }
 
 /** Test seam. */

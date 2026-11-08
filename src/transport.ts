@@ -1,7 +1,7 @@
 import type { OrderPayload } from './context';
 import { readState } from './context';
 import { reportEvent } from './debug';
-import { anonymousId, sessionId } from './identity';
+import { anonymousId, claimLink, sessionId } from './identity';
 import type { EmbedConfig, RecommendationsResponse, TrackedEvent } from './types';
 
 /**
@@ -99,13 +99,19 @@ function flushStrips(): void {
   }
 }
 
+/** One POST to the embed API, with the key as a header and never in the URL. */
+function send(config: EmbedConfig, path: string, body: string, keepalive?: boolean): Promise<Response> {
+  return fetch(`${config.endpoint}/api/embed/v1/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
+    body,
+    keepalive,
+  });
+}
+
 async function post(config: EmbedConfig, path: string, body: unknown): Promise<any> {
   try {
-    const response = await fetch(`${config.endpoint}/api/embed/v1/recommendations${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
-      body: JSON.stringify(body),
-    });
+    const response = await send(config, 'recommendations' + path, JSON.stringify(body));
     return response.ok ? await response.json() : response.status;
   } catch {
     return null;
@@ -146,12 +152,27 @@ async function fetchBatch(strips: PendingStrip[]): Promise<void> {
  */
 let queuedPlacement: string | null = null;
 
+/**
+ * Who sent these events.
+ *
+ * The customer goes with them only while consent is granted - readState empties
+ * it otherwise - so a signed-in shopper's events and recommendations share one
+ * profile, and a shopper who said no is just an anonymous id.
+ */
+function identityFields(): Record<string, unknown> {
+  const id = readState().customer?.id;
+  return {
+    anonymous_id: anonymousId(),
+    session_id: sessionId(),
+    customer: id ? { id } : undefined,
+  };
+}
+
 function buildEventPayload(events: TrackedEvent[]): string {
   return JSON.stringify({
     events,
     placement: queuedPlacement ?? undefined,
-    anonymous_id: anonymousId(),
-    session_id: sessionId(),
+    ...identityFields(),
   });
 }
 
@@ -187,12 +208,7 @@ function flush(config: EmbedConfig, useBeacon: boolean): void {
   }
 
   try {
-    void fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
-      body: payload,
-      keepalive: true,
-    }).catch(() => {});
+    void send(config, 'events', payload, true).catch(() => {});
   } catch {
     // Events are best-effort. Losing one must never surface on a customer page.
   }
@@ -255,23 +271,30 @@ export async function trackOrder(config: EmbedConfig, order: OrderPayload): Prom
   }));
   if (events.length === 0) return;
 
-  const payload = JSON.stringify({
-    events,
-    anonymous_id: anonymousId(),
-    session_id: sessionId(),
-  });
-  const url = `${config.endpoint}/api/embed/v1/events`;
-
   try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NSL-Key': config.key },
-      body: payload,
-      keepalive: true,
-    });
+    await send(config, 'events', JSON.stringify({ events, ...identityFields() }), true);
     if (config.debug) events.forEach(() => reportEvent());
   } catch {
     // A failed conversion report must never surface on a customer's page.
+  }
+}
+
+/**
+ * Tell the API this anonymous visitor is this customer.
+ *
+ * Once per pair: the API moves the anonymous id's earlier events onto the
+ * customer, which only needs doing the first time they meet. Never while
+ * consent is withheld or nobody is signed in. The customer id is hashed per
+ * workspace server-side; nothing else about them leaves the page.
+ */
+export function identify(config: EmbedConfig): void {
+  try {
+    const { consent, customer } = readState();
+    if (!consent || !customer?.id || !claimLink(customer.id)) return;
+    void send(config, 'identify', JSON.stringify({ anonymous_id: anonymousId(), customer: { id: customer.id } }), true)
+      .catch(() => {});
+  } catch {
+    // Best-effort, like every write: linking can happen on the next page.
   }
 }
 

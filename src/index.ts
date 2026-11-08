@@ -1,7 +1,7 @@
 import { readConfig } from './config';
 import { mountAll, refreshMounts, watchForMounts } from './mount';
-import { applyCommand, readOrder, type Command } from './context';
-import { trackOrder } from './transport';
+import { applyCommand, readOrder, withholdConsent, type Command } from './context';
+import { identify, trackOrder } from './transport';
 import { reportCartAdditions, reportPageView } from './signals';
 import type { EmbedConfig } from './types';
 
@@ -36,8 +36,13 @@ export function boot(): void {
 
   started = true;
 
+  // Before the queue, so a page that grants consent from its own script is
+  // heard, and before anything could touch storage.
+  if (config.consentPending) withholdConsent();
+
   const start = () => {
     drainQueue(config);
+    identify(config);
     // After the queue, so a page that says what it is before we load is heard
     // once, with everything it said.
     reportPageView(config);
@@ -54,7 +59,7 @@ export function boot(): void {
   }
 }
 
-const COMMANDS = new Set<Command>(['page', 'cart', 'customer', 'order', 'consent', 'refresh']);
+const COMMANDS = new Set<Command>(['page', 'cart', 'customer', 'order', 'consent', 'refresh', 'reset']);
 
 /** True while replaying the pre-load queue. */
 let draining = false;
@@ -92,6 +97,8 @@ function run(config: EmbedConfig, args: unknown[]): void {
   if (!draining) {
     if (command === 'page') reportPageView(config);
     if (command === 'cart') reportCartAdditions(config);
+    // A sign-in, or consent arriving for someone already signed in.
+    if (command === 'customer' || command === 'consent') identify(config);
   }
 }
 

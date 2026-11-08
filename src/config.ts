@@ -29,6 +29,8 @@ export function readConfig(): EmbedConfig | null {
     key,
     endpoint: (script?.dataset.nslEndpoint?.trim() || DEFAULT_ENDPOINT).replace(/\/+$/, ''),
     debug: debugRequested(script?.dataset.nslDebug !== undefined),
+    // Granted unless the tag says otherwise, so existing installs are unchanged.
+    consentPending: script?.dataset.nslConsent?.trim() === 'pending',
   };
 }
 
